@@ -37,6 +37,8 @@ namespace db {
 
         database &operator=(database &&db);
 
+        ~database();
+
         int connect(char const *dbname, int flags, const char *vfs = nullptr);
 
         int disconnect();
@@ -47,7 +49,7 @@ namespace db {
 
         int backup(database &dest_db, backup_handler h = {});
 
-        int backup(char const *dbname, database &dest_db, int flags, char const *vfs = nullptr);
+        int backup(char const* dbname, database& destdb, char const* destdbname, backup_handler h, int step_page = 5);
 
         // this function does not modify any of the object's member variable. (i.e. const keyword at last)
         // retrieves the last row id of the db
@@ -79,6 +81,8 @@ namespace db {
 
         int execf(char const *sql, ...);
 
+        int set_busy_timeout(int ms);
+
         int set_busy_timeout(busy_handler h);
 
         void set_busy_handler(busy_handler h);
@@ -94,16 +98,17 @@ namespace db {
     private:
         database(sqlite3 *db);
 
-        sqlite3 *db;
-        bool borrowing;
+        sqlite3 *db_;
+        bool borrowing_;
 
         // handlers
-        busy_handler bh;
-        commit_handler ch;
-        rollback_handler rh;
-        update_handler uh;
-        authorize_handler ah;
+        busy_handler bh_;
+        commit_handler ch_;
+        rollback_handler rh_;
+        update_handler uh_;
+        authorize_handler ah_;
 
-    }
+    };
 }
+
 #endif //LIBBITCOIN_DATABASE_DATABASE_HPP
