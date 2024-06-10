@@ -214,4 +214,40 @@ namespace db
         sqlite3_set_authorizer(db_, ah_ ? authorizer_impl : 0, &ah_);
     }
 
+
+    // implementation for handlers!
+    namespace
+    {
+        int busy_handler_impl(void* p, int cnt)
+        {
+        auto h = static_cast<database::busy_handler*>(p);
+        return (*h)(cnt);
+        }
+
+        int commit_hook_impl(void* p)
+        {
+        auto h = static_cast<database::commit_handler*>(p);
+        return (*h)();
+        }
+
+        void rollback_hook_impl(void* p)
+        {
+        auto h = static_cast<database::rollback_handler*>(p);
+        (*h)();
+        }
+
+        void update_hook_impl(void* p, int opcode, char const* dbname, char const* tablename, long long int rowid)
+        {
+        auto h = static_cast<database::update_handler*>(p);
+        (*h)(opcode, dbname, tablename, rowid);
+        }
+
+        int authorizer_impl(void* p, int evcode, char const* p1, char const* p2, char const* dbname, char const* tvname)
+        {
+        auto h = static_cast<database::authorize_handler*>(p);
+        return (*h)(evcode, p1, p2, dbname, tvname);
+        }
+
+    }
+
 }

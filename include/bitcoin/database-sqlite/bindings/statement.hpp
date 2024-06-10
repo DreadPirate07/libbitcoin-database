@@ -11,8 +11,15 @@
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include "noncopyable.hpp"
+#include "db.hpp"
 
 namespace db {
+
+    enum copy_semantic { copy, nocopy };
+    class null_type {};
+    extern null_type ignore;
+
     class statement : noncopyable {
 
     public:
@@ -64,11 +71,11 @@ namespace db {
         const char *tail;
 
         //prepares statement
-        explicit statement(database &db, char const *stmt = nullptr);
+        explicit statement(database& db, char const *stmt = nullptr);
 
         int prepare_impl(const char *stmt);
 
-        int finalize_impl(const char *stmt);
+        int finalize_impl(sqlite3_stmt *stmt);
 
         ~statement();
     };

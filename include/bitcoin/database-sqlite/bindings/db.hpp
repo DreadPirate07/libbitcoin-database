@@ -97,7 +97,7 @@ namespace db {
 
     private:
         database(sqlite3 *db);
-
+    private:
         sqlite3 *db_;
         bool borrowing_;
 
