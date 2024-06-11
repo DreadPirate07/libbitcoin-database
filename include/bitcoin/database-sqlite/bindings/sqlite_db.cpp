@@ -3,9 +3,10 @@
 //
 #include <sqlite3.h>
 #include <cstring>
+#include <memory>
 #include "noncopyable.hpp"
 #include "db.hpp"
-#include <memory>
+#include "db_error.hpp"
 
 namespace db
 {
