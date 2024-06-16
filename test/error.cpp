@@ -592,6 +592,17 @@ BOOST_AUTO_TEST_CASE(error_t__code__tx_tx_commit__true_exected_message)
     BOOST_REQUIRE_EQUAL(ec.message(), "tx_tx_commit");
 }
 
+// header archive
+
+BOOST_AUTO_TEST_CASE(error_t__code__header_put__true_exected_message)
+{
+    constexpr auto value = error::header_put;
+    const auto ec = code(value);
+    BOOST_REQUIRE(ec);
+    BOOST_REQUIRE(ec == value);
+    BOOST_REQUIRE_EQUAL(ec.message(), "header_put");
+}
+
 // txs archive
 
 BOOST_AUTO_TEST_CASE(error_t__code__txs_header__true_exected_message)
@@ -603,6 +614,15 @@ BOOST_AUTO_TEST_CASE(error_t__code__txs_header__true_exected_message)
     BOOST_REQUIRE_EQUAL(ec.message(), "txs_header");
 }
 
+BOOST_AUTO_TEST_CASE(error_t__code__txs_empty__true_exected_message)
+{
+    constexpr auto value = error::txs_empty;
+    const auto ec = code(value);
+    BOOST_REQUIRE(ec);
+    BOOST_REQUIRE(ec == value);
+    BOOST_REQUIRE_EQUAL(ec.message(), "txs_empty");
+}
+
 BOOST_AUTO_TEST_CASE(error_t__code__txs_txs_put__true_exected_message)
 {
     constexpr auto value = error::txs_txs_put;
@@ -610,6 +630,15 @@ BOOST_AUTO_TEST_CASE(error_t__code__txs_txs_put__true_exected_message)
     BOOST_REQUIRE(ec);
     BOOST_REQUIRE(ec == value);
     BOOST_REQUIRE_EQUAL(ec.message(), "txs_txs_put");
+}
+
+BOOST_AUTO_TEST_CASE(error_t__code__txs_confirm__true_exected_message)
+{
+    constexpr auto value = error::txs_confirm;
+    const auto ec = code(value);
+    BOOST_REQUIRE(ec);
+    BOOST_REQUIRE(ec == value);
+    BOOST_REQUIRE_EQUAL(ec.message(), "txs_confirm");
 }
 
 BOOST_AUTO_TEST_SUITE_END()

@@ -112,8 +112,7 @@ bool CLASS::get_version(uint32_t& version,
 }
 
 TEMPLATE
-bool CLASS::get_bits(uint32_t& bits,
-    const header_link& link) const NOEXCEPT
+bool CLASS::get_bits(uint32_t& bits, const header_link& link) const NOEXCEPT
 {
     table::header::get_bits header{};
     if (!store_.header.get(link, header))
@@ -124,9 +123,9 @@ bool CLASS::get_bits(uint32_t& bits,
 }
 
 TEMPLATE
-bool CLASS::get_context(context& ctx,
-    const header_link& link) const NOEXCEPT
+bool CLASS::get_context(context& ctx, const header_link& link) const NOEXCEPT
 {
+    // (4.04%)
     table::header::record_context header{};
     if (!store_.header.get(link, header))
         return false;
@@ -161,13 +160,9 @@ bool CLASS::get_work(uint256_t& work, const header_link& link) const NOEXCEPT
 TEMPLATE
 code CLASS::get_header_state(const header_link& link) const NOEXCEPT
 {
-    const auto fk = store_.validated_bk.first(link);
-    if (fk.is_terminal())
-        return error::unvalidated;
-
     table::validated_bk::slab_get_code valid{};
-    if (!store_.validated_bk.get(fk, valid))
-        return error::integrity;
+    if (!store_.validated_bk.find(link, valid))
+        return error::unvalidated;
 
     return to_block_code(valid.code);
 }
@@ -175,13 +170,9 @@ code CLASS::get_header_state(const header_link& link) const NOEXCEPT
 TEMPLATE
 code CLASS::get_block_state(const header_link& link) const NOEXCEPT
 {
-    const auto fk = store_.validated_bk.first(link);
-    if (fk.is_terminal())
-        return is_associated(link) ? error::unvalidated : error::unassociated;
-
     table::validated_bk::slab_get_code valid{};
-    if (!store_.validated_bk.get(fk, valid))
-        return error::integrity;
+    if (!store_.validated_bk.find(link, valid))
+        return is_associated(link) ? error::unvalidated : error::unassociated;
 
     // Fees only valid if block_confirmable.
     return to_block_code(valid.code);
@@ -191,13 +182,9 @@ TEMPLATE
 code CLASS::get_block_state(uint64_t& fees,
     const header_link& link) const NOEXCEPT
 {
-    const auto fk = store_.validated_bk.first(link);
-    if (fk.is_terminal())
-        return is_associated(link) ? error::unvalidated : error::unassociated;
-
     table::validated_bk::slab valid{};
-    if (!store_.validated_bk.get(fk, valid))
-        return error::integrity;
+    if (!store_.validated_bk.find(link, valid))
+        return is_associated(link) ? error::unvalidated : error::unassociated;
 
     // Fees only valid if block_confirmable.
     fees = valid.fees;
@@ -209,13 +196,13 @@ code CLASS::get_tx_state(const tx_link& link,
     const context& ctx) const NOEXCEPT
 {
     auto it = store_.validated_tx.it(link);
-    if (it.self().is_terminal())
+    if (!it)
         return error::unvalidated;
 
     table::validated_tx::slab_get_code valid{};
     do
     {
-        if (!store_.validated_tx.get(it.self(), valid))
+        if (!store_.validated_tx.get(it, valid))
             return error::integrity;
 
         if (is_sufficient(ctx, valid.ctx))
@@ -230,13 +217,13 @@ code CLASS::get_tx_state(uint64_t& fee, size_t& sigops, const tx_link& link,
     const context& ctx) const NOEXCEPT
 {
     auto it = store_.validated_tx.it(link);
-    if (it.self().is_terminal())
+    if (!it)
         return error::unvalidated;
 
     table::validated_tx::slab valid{};
     do
     {
-        if (!store_.validated_tx.get(it.self(), valid))
+        if (!store_.validated_tx.get(it, valid))
             return error::integrity;
 
         if (is_sufficient(ctx, valid.ctx))
@@ -366,7 +353,7 @@ bool CLASS::set_txs_connected(const header_link& link) NOEXCEPT
     if (!get_context(ctx, link))
         return false;
 
-    const auto txs = to_txs(link);
+    const auto txs = to_transactions(link);
     if (txs.empty())
         return false;
 

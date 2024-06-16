@@ -33,6 +33,17 @@ namespace database {
 
 // protected
 TEMPLATE
+height_link CLASS::get_height(const hash_digest& key) const NOEXCEPT
+{
+    table::header::get_height header{};
+    if (!store_.header.find(key, header))
+        return {};
+
+    return header.height;
+}
+
+// protected
+TEMPLATE
 height_link CLASS::get_height(const header_link& link) const NOEXCEPT
 {
     table::header::get_height header{};
@@ -50,9 +61,9 @@ bool CLASS::is_confirmed_unspent(const output_link& link) const NOEXCEPT
 }
 
 TEMPLATE
-bool CLASS::is_candidate_block(const header_link& link) const NOEXCEPT
+bool CLASS::is_candidate_header(const header_link& link) const NOEXCEPT
 {
-    // The block is candidate (by height).
+    // The header is candidate (by height).
     const auto height = get_height(link);
     if (height.is_terminal())
         return false;
@@ -130,7 +141,7 @@ bool CLASS::is_spent(const spend_link& link) const NOEXCEPT
 
 // unused
 TEMPLATE
-bool CLASS::is_strong(const spend_link& link) const NOEXCEPT
+bool CLASS::is_strong_spend(const spend_link& link) const NOEXCEPT
 {
     return !to_block(to_spend_tx(link)).is_terminal();
 }
@@ -236,24 +247,31 @@ TEMPLATE
 inline error::error_t CLASS::spent_prevout(const foreign_point& point,
     const tx_link& self) const NOEXCEPT
 {
+    // (2.94%)
     auto it = store_.spend.it(point);
-    if (it.self().is_terminal())
+    if (!it)
         return error::success;
 
     table::spend::get_parent spend{};
     do
     {
-        if (!store_.spend.get(it.self(), spend))
+        // (0.38%)
+        if (!store_.spend.get(it, spend))
             return error::integrity;
 
+        // Free (trivial).
         // Skip current spend, which is the only one if not double spent.
         if (spend.parent_fk == self)
             continue;
 
+        // Free (zero iteration without double spend).
         // If strong spender exists then prevout is confirmed double spent.
         if (!to_block(spend.parent_fk).is_terminal())
             return error::confirmed_double_spend;
     }
+    // Expensive (31.19%).
+    // Iteration exists because we allow double spending, and by design cannot
+    // preclude it because we download and index concurrently before confirm.
     while (it.advance());
     return error::success;
 }
@@ -263,7 +281,12 @@ TEMPLATE
 inline error::error_t CLASS::unspendable_prevout(const point_link& link,
     uint32_t sequence, uint32_t version, const context& ctx) const NOEXCEPT
 {
-    const auto strong = to_strong(get_point_key(link));
+    // Modest (1.24%), and with 4.77 conflict ratio.
+    const auto key = get_point_key(link);
+
+    // Expensize (8.6%).
+    const auto strong = to_strong(key);
+
     if (strong.block.is_terminal())
         return strong.tx.is_terminal() ? error::missing_previous_output :
             error::unconfirmed_spend;
@@ -284,6 +307,7 @@ inline error::error_t CLASS::unspendable_prevout(const point_link& link,
     return error::success;
 }
 
+
 TEMPLATE
 inline error::error_t CLASS::unspent_duplicates(const tx_link& link,
     const context& ctx) const NOEXCEPT
@@ -291,6 +315,7 @@ inline error::error_t CLASS::unspent_duplicates(const tx_link& link,
     if (!ctx.is_enabled(system::chain::flags::bip30_rule))
         return error::success;
 
+    // This will be empty if current block is not set_strong.
     const auto coinbases = to_strongs(get_tx_key(link));
     if (coinbases.empty())
         return error::integrity;
@@ -315,27 +340,34 @@ code CLASS::block_confirmable(const header_link& link) const NOEXCEPT
     if (!get_context(ctx, link))
         return error::integrity;
 
-    const auto txs = to_txs(link);
+    // (0.07%)
+    const auto txs = to_transactions(link);
     if (txs.empty())
         return error::success;
 
+    // (0.11%) because !bip30.
     code ec{};
     if ((ec = unspent_duplicates(txs.front(), ctx)))
         return ec;
 
+    // (0.33%)
     uint32_t version{};
     table::spend::get_prevout_sequence spend{};
     for (auto tx = std::next(txs.begin()); tx != txs.end(); ++tx)
     {
+        // (4.71%) tx.get, puts.get, reduce collision.
         for (const auto& spend_fk: to_tx_spends(version, *tx))
         {
+            // (3.65%) spend.get, reduce collision.
             if (!store_.spend.get(spend_fk, spend))
                 return error::integrity;
 
+            // (33.42%)
             if ((ec = unspendable_prevout(spend.point_fk, spend.sequence,
                 version, ctx)))
                 return ec;
 
+            // (34.74%)
             if ((ec = spent_prevout(spend.prevout(), *tx)))
                 return ec;
         }
@@ -344,43 +376,60 @@ code CLASS::block_confirmable(const header_link& link) const NOEXCEPT
     return error::success;
 }
 
+// protected
+TEMPLATE
+bool CLASS::set_strong(const header_link& link, const tx_links& txs,
+    bool positive) NOEXCEPT
+{
+    return std::all_of(txs.begin(), txs.end(), [&](const tx_link& fk) NOEXCEPT
+    {
+        // If under checkpoint txs is set later, so under fault will reoccur.
+        // Otherwise confirmed by height is set later so will also reoccur.
+        // Confirmation by height always sequential so can be no inconsistency.
+        return store_.strong_tx.put(fk, table::strong_tx::record
+        {
+            {},
+            link,
+            positive
+        });
+    });
+}
+
+TEMPLATE
+bool CLASS::is_strong(const header_link& link) const NOEXCEPT
+{
+    return !to_block(to_coinbase(link)).is_terminal();
+}
+
 TEMPLATE
 bool CLASS::set_strong(const header_link& link) NOEXCEPT
 {
-    const auto txs = to_txs(link);
+    // (0.22%) after milestone.
+    const auto txs = to_transactions(link);
     if (txs.empty())
         return false;
-
-    const table::strong_tx::record strong{ {}, link, true };
 
     // ========================================================================
     const auto scope = store_.get_transactor();
 
-    // Clean allocation failure (e.g. disk full), block not confirmed.
-    return std::all_of(txs.begin(), txs.end(), [&](const tx_link& fk) NOEXCEPT
-    {
-        return store_.strong_tx.put(fk, strong);
-    });
+    // (4.04%) after milestone.
+    // Clean allocation failure (e.g. disk full), see set_strong() comments.
+    return set_strong(link, txs, true);
     // ========================================================================
 }
 
 TEMPLATE
 bool CLASS::set_unstrong(const header_link& link) NOEXCEPT
 {
-    const auto txs = to_txs(link);
+    const auto txs = to_transactions(link);
     if (txs.empty())
         return false;
-
-    const table::strong_tx::record strong{ {}, link, false };
 
     // ========================================================================
     const auto scope = store_.get_transactor();
 
-    // Clean allocation failure (e.g. disk full), block not unconfirmed.
-    return std::all_of(txs.begin(), txs.end(), [&](const tx_link& fk) NOEXCEPT
-    {
-        return store_.strong_tx.put(fk, strong);
-    });
+    // Clean allocation failure (e.g. disk full), see set_strong() comments.
+    return set_strong(link, txs, false);
     // ========================================================================
 }
 
@@ -393,18 +442,13 @@ bool CLASS::initialize(const block& genesis) NOEXCEPT
     // ========================================================================
     const auto scope = store_.get_transactor();
 
-    const context ctx{};
-    if (!set(genesis, ctx))
+    if (!set(genesis, context{}, false, false))
         return false;
 
-    constexpr auto fees = 0u;
-    constexpr auto sigops = 0u;
     const auto link = to_header(genesis.hash());
 
     // Unsafe for allocation failure, but only used in store creation.
-    return set_strong(header_link{ 0 })
-        && set_tx_connected(tx_link{ 0 }, ctx, fees, sigops) // tx valid.
-        && set_block_confirmable(link, fees) // rename, block valid step.
+    return set_strong(link)
         && push_candidate(link)
         && push_confirmed(link);
     // ========================================================================
@@ -413,6 +457,9 @@ bool CLASS::initialize(const block& genesis) NOEXCEPT
 TEMPLATE
 bool CLASS::push_candidate(const header_link& link) NOEXCEPT
 {
+    if (link.is_terminal())
+        return false;
+
     // ========================================================================
     const auto scope = store_.get_transactor();
 
@@ -425,6 +472,9 @@ bool CLASS::push_candidate(const header_link& link) NOEXCEPT
 TEMPLATE
 bool CLASS::push_confirmed(const header_link& link) NOEXCEPT
 {
+    if (link.is_terminal())
+        return false;
+
     // ========================================================================
     const auto scope = store_.get_transactor();
 
