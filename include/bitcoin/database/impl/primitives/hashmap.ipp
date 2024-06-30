@@ -147,22 +147,24 @@ TEMPLATE
 Link CLASS::first(const Key& key) const NOEXCEPT
 {
     ////return it(key).self();
-    // Copied from iterator::to_match(link), avoids normal form it() construct.
-    return first(manager_.get(), head_.top(key), key);
+    return first(get_memory(), head_.top(key), key);
 }
 
 TEMPLATE
 typename CLASS::iterator CLASS::it(const Key& key) const NOEXCEPT
 {
-    // (14.09% + 5.36%)
-    // Expensive construction, avoid unless iteration is necessary.
-    return { manager_.get(), head_.top(key), key };
+    return { get_memory(), head_.top(key), key };
 }
-
 TEMPLATE
 Link CLASS::allocate(const Link& size) NOEXCEPT
 {
     return manager_.allocate(size);
+}
+
+TEMPLATE
+memory_ptr CLASS::get_memory() const NOEXCEPT
+{
+    return manager_.get();
 }
 
 TEMPLATE
@@ -180,9 +182,8 @@ TEMPLATE
 template <typename Element, if_equal<Element::size, Size>>
 bool CLASS::find(const Key& key, Element& element) const NOEXCEPT
 {
-    // Renamed to "find()" to avoid collision over link/key.
     // This override avoids duplicated memory_ptr construct in get(first()).
-    const auto ptr = manager_.get();
+    const auto ptr = get_memory();
     return read(ptr, first(ptr, head_.top(key), key), element);
 }
 
@@ -191,15 +192,36 @@ template <typename Element, if_equal<Element::size, Size>>
 bool CLASS::get(const Link& link, Element& element) const NOEXCEPT
 {
     // This override is the normal form.
-    return read(manager_.get(), link, element);
+    return read(get_memory(), link, element);
 }
 
+// static
 TEMPLATE
 template <typename Element, if_equal<Element::size, Size>>
-bool CLASS::get(const iterator& it, Element& element) const NOEXCEPT
+bool CLASS::get(const iterator& it, Element& element) NOEXCEPT
 {
     // This override avoids deadlock when holding iterator to the same table.
     return read(it.get(), it.self(), element);
+}
+
+// static
+TEMPLATE
+template <typename Element, if_equal<Element::size, Size>>
+bool CLASS::get(const iterator& it, const Link& link,
+    Element& element) NOEXCEPT
+{
+    // This override avoids deadlock when holding iterator to the same table.
+    return read(it.get(), link, element);
+}
+
+// static
+TEMPLATE
+template <typename Element, if_equal<Element::size, Size>>
+bool CLASS::get(const memory_ptr& ptr, const Link& link,
+    Element& element) NOEXCEPT
+{
+    // This override avoids deadlock when holding iterator to the same table.
+    return read(ptr, link, element);
 }
 
 TEMPLATE
@@ -215,7 +237,6 @@ bool CLASS::set(const Link& link, const Element& element) NOEXCEPT
     finalizer sink{ stream };
     sink.skip_bytes(index_size);
 
-    // (1.65%)
     if constexpr (!is_slab) { BC_DEBUG_ONLY(sink.set_limit(Size);) }
     return element.to_data(sink);
 }
@@ -262,19 +283,15 @@ bool CLASS::put_link(Link& link, const Key& key,
     if (!ptr)
         return false;
 
+    // iostream.flush is a nop (direct copy).
     iostream stream{ *ptr };
     finalizer sink{ stream };
     sink.skip_bytes(Link::size);
     sink.write_bytes(key);
-    sink.set_finalizer([this, link, index = head_.index(key), ptr]() NOEXCEPT
-    {
-        auto& next = unsafe_array_cast<uint8_t, Link::size>(ptr->begin());
-        return head_.push(link, next, index);
-    });
 
-    // (1.63%)
     if constexpr (!is_slab) { BC_DEBUG_ONLY(sink.set_limit(Size * count);) }
-    return element.to_data(sink) && sink.finalize();
+    auto& next = unsafe_array_cast<uint8_t, Link::size>(ptr->begin());
+    return element.to_data(sink) && head_.push(link, next, head_.index(key));
 }
 
 TEMPLATE
@@ -295,20 +312,15 @@ bool CLASS::put(const Link& link, const Key& key,
     if (!ptr)
         return false;
 
+    // iostream.flush is a nop (direct copy).
     iostream stream{ *ptr };
     finalizer sink{ stream };
     sink.skip_bytes(Link::size);
     sink.write_bytes(key);
 
-    // The finalizer provides deferred index commit following serialization.
-    sink.set_finalizer([this, link, index = head_.index(key), ptr]() NOEXCEPT
-    {
-        auto& next = unsafe_array_cast<uint8_t, Link::size>(ptr->begin());
-        return head_.push(link, next, index);
-    });
-
     if constexpr (!is_slab) { BC_DEBUG_ONLY(sink.set_limit(Size * count);) }
-    return element.to_data(sink) && sink.finalize();
+    auto& next = unsafe_array_cast<uint8_t, Link::size>(ptr->begin());
+    return element.to_data(sink) && head_.push(link, next, head_.index(key));
 }
 
 TEMPLATE
@@ -348,7 +360,7 @@ bool CLASS::read(const memory_ptr& ptr, const Link& link,
         return false;
 
     using namespace system;
-    const auto start = iterator::link_to_position(link);
+    const auto start = manager::link_to_position(link);
     if (is_limited<ptrdiff_t>(start))
         return false;
 
@@ -365,6 +377,7 @@ bool CLASS::read(const memory_ptr& ptr, const Link& link,
     iostream stream{ offset, size - position };
     reader source{ stream };
     source.skip_bytes(index_size);
+
     if constexpr (!is_slab) { BC_DEBUG_ONLY(source.set_limit(Size);) }
     return element.from_data(source);
 }
@@ -378,13 +391,13 @@ Link CLASS::first(const memory_ptr& ptr, Link link, const Key& key) NOEXCEPT
     while (!link.is_terminal())
     {
         // get element offset (fault)
-        const auto offset = ptr->offset(iterator::link_to_position(link));
+        const auto offset = ptr->offset(manager::link_to_position(link));
         if (is_null(offset))
             return {};
 
         // element key matches (found)
-        const auto key_ptr = std::next(offset, Link::size);
-        if (is_zero(std::memcmp(key.data(), key_ptr, array_count<Key>)))
+        if (is_zero(std::memcmp(key.data(), std::next(offset, Link::size),
+            array_count<Key>)))
             return link;
 
         // set next element link (loop)

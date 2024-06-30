@@ -87,55 +87,6 @@ inline bool CLASS::is_milestone(const header_link& link) const NOEXCEPT
 }
 
 TEMPLATE
-inline bool CLASS::is_malleated64(const block& block) const NOEXCEPT
-{
-    // This is a very cheap prequalification.
-    if (!block.is_malleable64())
-        return false;
-
-    // block.get_hash() assumes cached or is not thread safe.
-    auto it = store_.txs.it(to_header(block.get_hash()));
-    if (!it)
-        return false;
-
-    const auto transactions = *block.transactions_ptr();
-    do
-    {
-        // Non-malleable is final so don't continue with that type association.
-        table::txs::slab txs{};
-        if (!store_.txs.get(it, txs) || !txs.malleable)
-            return false;
-
-        if (txs.tx_fks.size() != transactions.size())
-            continue;
-
-        auto match{ true };
-        auto tx = transactions.begin();
-        for (const auto& tx_fk: txs.tx_fks)
-        {
-            // tx.get_hash() assumes cached or is not thread safe.
-            if (store_.tx.get_key(tx_fk) != (*tx++)->get_hash(false))
-            {
-                match = false;
-                break;
-            }
-        }
-
-        if (match)
-            return true;
-    }
-    while (it.advance());
-    return false;
-}
-
-TEMPLATE
-inline bool CLASS::is_malleable64(const header_link& link) const NOEXCEPT
-{
-    table::txs::get_malleable txs{};
-    return store_.txs.find(link, txs) && txs.malleable;
-}
-
-TEMPLATE
 inline bool CLASS::is_associated(const header_link& link) const NOEXCEPT
 {
     table::txs::get_associated txs{};
@@ -351,13 +302,13 @@ TEMPLATE
 bool CLASS::get_tx_position(size_t& out, const tx_link& link) const NOEXCEPT
 {
     // to_block is strong but not necessarily confirmed.
-    const auto block_fk = to_block(link);
-    if (!is_confirmed_block(block_fk))
+    const auto fk = to_block(link);
+    if (!is_confirmed_block(fk))
         return false;
 
     // False return below implies an integrity error (tx should be indexed).
     table::txs::get_position txs{ {}, link };
-    if (!store_.txs.find(block_fk, txs))
+    if (!store_.txs.find(fk, txs))
         return false;
 
     out = txs.position;
@@ -405,6 +356,7 @@ TEMPLATE
 typename CLASS::inputs_ptr CLASS::get_inputs(
     const tx_link& link) const NOEXCEPT
 {
+    // TODO: eliminate shared memory pointer reallocations.
     using namespace system;
     const auto fks = to_tx_spends(link);
     if (fks.empty())
@@ -424,6 +376,7 @@ TEMPLATE
 typename CLASS::outputs_ptr CLASS::get_outputs(
     const tx_link& link) const NOEXCEPT
 {
+    // TODO: eliminate shared memory pointer reallocations.
     using namespace system;
     const auto fks = to_tx_outputs(link);
     if (fks.empty())
@@ -443,6 +396,7 @@ TEMPLATE
 typename CLASS::transactions_ptr CLASS::get_transactions(
     const header_link& link) const NOEXCEPT
 {
+    // TODO: eliminate shared memory pointer reallocations.
     using namespace system;
     const auto txs = to_transactions(link);
     if (txs.empty())
@@ -551,6 +505,7 @@ TEMPLATE
 typename CLASS::transaction::cptr CLASS::get_transaction(
     const tx_link& link) const NOEXCEPT
 {
+    // TODO: eliminate shared memory pointer reallocations.
     using namespace system;
     table::transaction::only_with_sk tx{};
     if (!store_.tx.get(link, tx))
@@ -583,6 +538,7 @@ typename CLASS::transaction::cptr CLASS::get_transaction(
         tx.locktime
     );
 
+    // Witness hash is not retained by the store.
     ptr->set_nominal_hash(std::move(tx.key));
     return ptr;
 }
@@ -649,6 +605,7 @@ typename CLASS::inputs_ptr CLASS::get_spenders(
     const auto spenders = to_shared<chain::input_cptrs>();
     spenders->reserve(spend_fks.size());
 
+    // TODO: eliminate shared memory pointer reallocation.
     for (const auto& spend_fk: spend_fks)
         if (!push_bool(*spenders, get_input(spend_fk)))
             return {};
@@ -724,6 +681,7 @@ code CLASS::set_code(tx_link& out_fk, const transaction& tx) NOEXCEPT
     std_vector<foreign_point> spends{};
     spends.reserve(ins.size());
 
+    // TODO: eliminate shared memory pointer reallocations.
     // ========================================================================
     const auto scope = store_.get_transactor();
 
@@ -798,7 +756,7 @@ code CLASS::set_code(tx_link& out_fk, const transaction& tx) NOEXCEPT
             return error::tx_spend_set;
         }
 
-        // Acumulate spends (input references) in order.
+        // Accumulate spends (input references) in order.
         puts.spend_fks.push_back(spend_fk.value++);
     }
 
@@ -817,7 +775,7 @@ code CLASS::set_code(tx_link& out_fk, const transaction& tx) NOEXCEPT
             return error::tx_output_put;
         }
 
-        // Acumulate outputs in order.
+        // Accumulate outputs in order.
         puts.out_fks.push_back(output_fk);
     }
 
@@ -1081,10 +1039,8 @@ code CLASS::set_code(txs_link& out_fk, const transactions& txs,
 
     ////// GUARD (block (txs) redundancy)
     ////// This is only fully effective if there is a single database thread.
-    ////// Guard must be lifted for an existing top malleable association so
-    ////// that a non-malleable association may be accomplished.
     ////out_fk = to_txs(key);
-    ////if (!out_fk.is_terminal() && !is_malleable(key))
+    ////if (!out_fk.is_terminal())
     ////    return error::success;
 
     code ec{};
@@ -1102,13 +1058,13 @@ code CLASS::set_code(txs_link& out_fk, const transactions& txs,
 
     using bytes = linkage<schema::size>::integer;
     const auto wire = system::possible_narrow_cast<bytes>(block_size);
-    const auto malleable = block::is_malleable64(txs);
 
     // ========================================================================
     const auto scope = store_.get_transactor();
     constexpr auto positive = true;
 
     // Clean allocation failure (e.g. disk full), see set_strong() comments.
+    // Transactor assures cannot be restored without txs, as required to unset.
     if (strong && !set_strong(key, links, positive))
         return error::txs_confirm;
 
@@ -1117,38 +1073,11 @@ code CLASS::set_code(txs_link& out_fk, const transactions& txs,
     out_fk = store_.txs.put_link(key, table::txs::slab
     {
         {},
-        malleable,
         wire,
         links
     });
 
     return out_fk.is_terminal() ? error::txs_txs_put : error::success;
-    // ========================================================================
-}
-
-// unset txs
-// ----------------------------------------------------------------------------
-
-TEMPLATE
-bool CLASS::set_dissasociated(const header_link& key) NOEXCEPT
-{
-    if (key.is_terminal())
-        return false;
-
-    const auto malleable = is_malleable64(key);
-
-    // ========================================================================
-    const auto scope = store_.get_transactor();
-
-    // Header link is the key for the txs table.
-    // Clean single allocation failure (e.g. disk full).
-    return store_.txs.put(key, table::txs::slab
-    {
-        {},
-        malleable,
-        {},
-        {}
-    });
     // ========================================================================
 }
 

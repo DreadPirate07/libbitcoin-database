@@ -105,8 +105,6 @@ bool map::is_open() const NOEXCEPT
 // Exclusive lock on remap_mutex_ ensures there are open accessor objects,
 // which allows for safely remapping the memory map.
 
-// TODO: map_, flush_, unmap_, remap_ (resize_, finalize_) return codes.
-
 code map::load() NOEXCEPT
 {
     std::unique_lock field_lock(field_mutex_);
@@ -284,7 +282,7 @@ memory_ptr map::get(size_t offset) const NOEXCEPT
 
 memory::iterator map::get_raw(size_t offset) const NOEXCEPT
 {
-    // Pointer is otherwise ungaurded, not remap safe (use for table heads).
+    // Pointer is otherwise unguarded, not remap safe (use for table heads).
     if (offset > size())
         return nullptr;
 
@@ -337,6 +335,8 @@ void map::set_disk_space(size_t required) NOEXCEPT
 
 // private, mman wrappers, not thread safe
 // ----------------------------------------------------------------------------
+
+// TODO: map_, flush_, unmap_, remap_ (resize_, finalize_) return codes.
 
 constexpr auto fail = -1;
 

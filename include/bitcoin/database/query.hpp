@@ -45,14 +45,38 @@ using filter_link = table::neutrino::link;
 
 using header_links = std_vector<header_link::integer>;
 using tx_links = std_vector<tx_link::integer>;
-using spend_links = std_vector<spend_link::integer>;
 using input_links = std_vector<input_link::integer>;
 using output_links = std_vector<output_link::integer>;
+using spend_links = std_vector<spend_link::integer>;
 
+struct strong_pair { header_link block{}; tx_link tx{}; };
 using foreign_point = table::spend::search_key;
 using two_counts = std::pair<size_t, size_t>;
-struct strong_pair { header_link block; tx_link tx; };
-using strong_pairs = std_vector<strong_pair>;
+
+struct spend_set
+{
+    struct spend
+    {
+        inline table::spend::search_key prevout() const NOEXCEPT
+        {
+            return table::spend::compose(point_fk, point_index);
+        }
+
+        inline bool is_null() const NOEXCEPT
+        {
+            return point_fk == table::spend::pt::terminal;
+        }
+
+        table::spend::pt::integer point_fk{};
+        table::spend::ix::integer point_index{};
+        uint32_t sequence{};
+    };
+
+    tx_link tx{};
+    uint32_t version{};
+    std_vector<spend> spends{};
+};
+using spend_sets = std_vector<spend_set>;
 
 // Writers (non-const) are only: push_, pop_, set_ and initialize.
 template <typename Store>
@@ -248,7 +272,7 @@ public:
 
     /// block/tx to block/s (reverse navigation)
     header_link to_parent(const header_link& link) const NOEXCEPT;
-    header_link to_block(const tx_link& link) const NOEXCEPT;
+    header_link to_block(const tx_link& key) const NOEXCEPT;
 
     /// output to spenders (reverse navigation)
     spend_links to_spenders(const point& prevout) const NOEXCEPT;
@@ -264,9 +288,8 @@ public:
     /// block to txs/puts (forward navigation)
     tx_link to_coinbase(const header_link& link) const NOEXCEPT;
     tx_links to_transactions(const header_link& link) const NOEXCEPT;
-    spend_links to_non_coinbase_spends(const header_link& link) const NOEXCEPT;
-    spend_links to_block_spends(const header_link& link) const NOEXCEPT;
     output_links to_block_outputs(const header_link& link) const NOEXCEPT;
+    spend_links to_block_spends(const header_link& link) const NOEXCEPT;
 
     /// hashmap enumeration
     header_link top_header(size_t bucket) const NOEXCEPT;
@@ -282,8 +305,6 @@ public:
     inline bool is_block(const hash_digest& key) const NOEXCEPT;
     inline bool is_tx(const hash_digest& key) const NOEXCEPT;
     inline bool is_coinbase(const tx_link& link) const NOEXCEPT;
-    inline bool is_malleated64(const block& block) const NOEXCEPT;
-    inline bool is_malleable64(const header_link& link) const NOEXCEPT;
     inline bool is_associated(const header_link& link) const NOEXCEPT;
     inline bool is_milestone(const header_link& link) const NOEXCEPT;
 
@@ -322,7 +343,9 @@ public:
     bool get_tx_height(size_t& out, const tx_link& link) const NOEXCEPT;
     bool get_tx_position(size_t& out, const tx_link& link) const NOEXCEPT;
 
-    /// False implies fault.
+    /// Terminal implies not found, false implies fault.
+    height_link get_height(const hash_digest& key) const NOEXCEPT;
+    height_link get_height(const header_link& link) const NOEXCEPT;
     bool get_height(size_t& out, const hash_digest& key) const NOEXCEPT;
     bool get_height(size_t& out, const header_link& link) const NOEXCEPT;
     bool get_value(uint64_t& out, const output_link& link) const NOEXCEPT;
@@ -397,9 +420,6 @@ public:
         bool strong) NOEXCEPT;
     header_link set_link(const block& block, bool strong) NOEXCEPT;
 
-    /// Disassociate txs of block from its header (malleable64 found invalid).
-    bool set_dissasociated(const header_link& key) NOEXCEPT;
-
     /// Chain state.
     /// -----------------------------------------------------------------------
     chain_state_ptr get_chain_state(const system::settings& settings,
@@ -456,7 +476,8 @@ public:
     /// These are not used in confirmation.
     /// These rely on strong (use only for confirmation process).
     bool is_spent(const spend_link& link) const NOEXCEPT;
-    bool is_strong(const header_link& link) const NOEXCEPT;
+    bool is_strong_tx(const tx_link& link) const NOEXCEPT;
+    bool is_strong_block(const header_link& link) const NOEXCEPT;
     bool is_strong_spend(const spend_link& link) const NOEXCEPT;
     bool is_mature(const spend_link& link, size_t height) const NOEXCEPT;
     bool is_locked(const spend_link& link, uint32_t sequence,
@@ -464,9 +485,12 @@ public:
 
     /// These are used in confirmation.
     /// Block association relies on strong (confirmed or pending).
-    code block_confirmable(const header_link& link) const NOEXCEPT;
     bool set_strong(const header_link& link) NOEXCEPT;
     bool set_unstrong(const header_link& link) NOEXCEPT;
+    code block_confirmable(const header_link& link) const NOEXCEPT;
+    code tx_confirmable(const tx_link& link, const context& ctx) const NOEXCEPT;
+    code unspent_duplicates(const tx_link& coinbase,
+        const context& ctx) const NOEXCEPT;
 
     /// Height indexation.
     bool initialize(const block& genesis) NOEXCEPT;
@@ -496,23 +520,22 @@ public:
         const filter& body) NOEXCEPT;
 
 protected:
-    bool set_strong(const header_link& link, const tx_links& txs,
-        bool positive) NOEXCEPT;
-
     /// Translate.
     /// -----------------------------------------------------------------------
+
+    spend_set to_spend_set(const tx_link& link) const NOEXCEPT;
+    spend_sets to_spend_sets(const header_link& link) const NOEXCEPT;
+
     uint32_t to_spend_index(const tx_link& parent_fk,
         const spend_link& input_fk) const NOEXCEPT;
     uint32_t to_output_index(const tx_link& parent_fk,
         const output_link& output_fk) const NOEXCEPT;
     spend_link to_spender(const tx_link& link,
         const foreign_point& point) const NOEXCEPT;
-    spend_links to_tx_spends(uint32_t& version,
-        const tx_link& link) const NOEXCEPT;
 
     // Critical path
-    inline header_links to_blocks(const tx_link& link) const NOEXCEPT;
-    inline strong_pairs to_strongs(const hash_digest& tx_hash) const NOEXCEPT;
+    inline tx_links to_strong_txs(const tx_link& link) const NOEXCEPT;
+    inline tx_links to_strong_txs(const hash_digest& tx_hash) const NOEXCEPT;
     inline strong_pair to_strong(const hash_digest& tx_hash) const NOEXCEPT;
 
     /// Validate.
@@ -525,24 +548,23 @@ protected:
     /// Confirm.
     /// -----------------------------------------------------------------------
 
-    height_link get_height(const hash_digest& key) const NOEXCEPT;
-    height_link get_height(const header_link& link) const NOEXCEPT;
     bool is_confirmed_unspent(const output_link& link) const NOEXCEPT;
-    error::error_t mature_prevout(const point_link& link,
+    code mature_prevout(const point_link& link,
         size_t height) const NOEXCEPT;
-    error::error_t locked_prevout(const point_link& link, uint32_t sequence,
+    code locked_prevout(const point_link& link, uint32_t sequence,
         const context& ctx) const NOEXCEPT;
 
     // Critical path
-    inline error::error_t spent_prevout(tx_link link,
-        index index) const NOEXCEPT;
-    inline error::error_t spent_prevout(const foreign_point& point,
+    bool is_spent_prevout(const tx_link& link, index index) const NOEXCEPT;
+    bool is_spent_prevout(const foreign_point& point,
         const tx_link& self) const NOEXCEPT;
-    inline error::error_t unspendable_prevout(const point_link& link,
+    error::error_t spent_prevout(const foreign_point& point,
+        const tx_link& self) const NOEXCEPT;
+    error::error_t unspendable_prevout(const point_link& link,
         uint32_t sequence, uint32_t version,
         const context& ctx) const NOEXCEPT;
-    inline error::error_t unspent_duplicates(const tx_link& link,
-        const context& ctx) const NOEXCEPT;
+    bool set_strong(const header_link& link, const tx_links& txs,
+        bool positive) NOEXCEPT;
 
     /// context
     /// -----------------------------------------------------------------------
@@ -582,11 +604,12 @@ protected:
         const header_link& link, size_t height) const NOEXCEPT;
 
 private:
-    using block_tx = table::strong_tx::record;
-    using block_txs = std::vector<block_tx>;
-    static inline header_links strong_only(const block_txs& strongs) NOEXCEPT;
-    static inline bool contains(const block_txs& blocks,
-        const block_tx& block) NOEXCEPT;
+    struct maybe_strong { header_link block{}; tx_link tx{}; bool strong{}; };
+    using maybe_strongs = std_vector<maybe_strong>;
+
+    static inline tx_links strong_only(const maybe_strongs& pairs) NOEXCEPT;
+    static inline bool contains(const maybe_strongs& pairs,
+        const header_link& block) NOEXCEPT;
 
     // These are thread safe.
     Store& store_;

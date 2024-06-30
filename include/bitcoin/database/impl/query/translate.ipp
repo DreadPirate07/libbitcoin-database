@@ -199,17 +199,13 @@ header_link CLASS::to_parent(const header_link& link) const NOEXCEPT
 }
 
 TEMPLATE
-header_link CLASS::to_block(const tx_link& link) const NOEXCEPT
+header_link CLASS::to_block(const tx_link& key) const NOEXCEPT
 {
-    // (10.36%)
     table::strong_tx::record strong{};
-    if (!store_.strong_tx.find(link, strong))
+    if (!store_.strong_tx.find(key, strong) || !strong.positive)
         return {};
 
-    // Terminal implies not strong (false).
-    if (!strong.positive)
-        return {};
-    
+    // Terminal implies not strong (not in block).
     return strong.header_fk;
 }
 
@@ -220,7 +216,8 @@ header_link CLASS::to_block(const tx_link& link) const NOEXCEPT
 TEMPLATE
 inline strong_pair CLASS::to_strong(const hash_digest& tx_hash) const NOEXCEPT
 {
-    // (14.21%) from block_confirmable, reduce collision.
+    // Iteration of tx is necessary because there may be duplicates.
+    // Only top block (strong) association for given tx instance is considered.
     auto it = store_.tx.it(tx_hash);
     strong_pair strong{ {}, it.self() };
     if (!it)
@@ -229,13 +226,10 @@ inline strong_pair CLASS::to_strong(const hash_digest& tx_hash) const NOEXCEPT
     do
     {
         strong.tx = it.self();
-
-        // (10.99%) from block_confirmable.
         strong.block = to_block(strong.tx);
         if (!strong.block.is_terminal())
             return strong;
     }
-    // (0.28%)
     while (it.advance());
     return strong;
 }
@@ -248,21 +242,20 @@ inline strong_pair CLASS::to_strong(const hash_digest& tx_hash) const NOEXCEPT
 // is not possible that two tx instances are both strong by the same block.
 // Return the distinct set of block-tx tuples where tx is strong by block.
 TEMPLATE
-inline strong_pairs CLASS::to_strongs(const hash_digest& tx_hash) const NOEXCEPT
+inline tx_links CLASS::to_strong_txs(const hash_digest& tx_hash) const NOEXCEPT
 {
     auto it = store_.tx.it(tx_hash);
     if (!it)
         return {};
 
-    strong_pairs strongs{};
+    tx_links links{};
     do
     {
-        // clang emplace_back bug (no matching constructor), using push_back.
-        for (const auto& link: to_blocks(it.self()))
-            strongs.push_back({ link, it.self() });
+        for (const auto& tx: to_strong_txs(it.self()))
+            links.push_back(tx);
     }
     while (it.advance());
-    return strongs;
+    return links;
 }
 
 // protected
@@ -271,47 +264,57 @@ inline strong_pairs CLASS::to_strongs(const hash_digest& tx_hash) const NOEXCEPT
 // top of the strong_tx table will reflect the current state of only one block
 // association. This scans the multimap for the first instance of each block
 // that is associated by the tx.link and returns that set of block links.
-// Return the distinct set of block/header links where tx is strong by block.
+// Return the distinct set of tx links where each tx is strong by block.
 TEMPLATE
-inline header_links CLASS::to_blocks(const tx_link& link) const NOEXCEPT
+inline tx_links CLASS::to_strong_txs(const tx_link& link) const NOEXCEPT
 {
     auto it = store_.strong_tx.it(link);
     if (!it)
         return {};
 
-    block_txs strongs{};
+    // Obtain all first (by block) duplicate (by hash) tx records.
+    maybe_strongs pairs{};
     do
     {
-        block_tx strong{};
-        if (store_.strong_tx.get(it, strong) && !contains(strongs, strong))
-            strongs.push_back(strong);
+        table::strong_tx::record strong{};
+        if (store_.strong_tx.get(it, strong) &&
+            !contains(pairs, strong.header_fk))
+        {
+#if defined(HAVE_CLANG)
+            // emplace_back aggregate initialization requires clang 16.
+            pairs.push_back({ strong.header_fk, it.self(), strong.positive });
+#else
+            pairs.emplace_back(strong.header_fk, it.self(), strong.positive);
+#endif
+        }
     }
     while(it.advance());
-    return strong_only(strongs);
+    return strong_only(pairs);
 }
 
 // private/static
 TEMPLATE
-inline bool CLASS::contains(const block_txs& blocks,
-    const block_tx& block) NOEXCEPT
+inline bool CLASS::contains(const maybe_strongs& pairs,
+    const header_link& block) NOEXCEPT
 {
-    return std::any_of(blocks.begin(), blocks.end(),
-        [&block](const auto& it) NOEXCEPT
+    return std::any_of(pairs.begin(), pairs.end(),
+        [&block](const auto& pair) NOEXCEPT
         {
-            return it.header_fk == block.header_fk;
+            return block == pair.block;
         });
 }
 
 // private/static
 TEMPLATE
-inline header_links CLASS::strong_only(const block_txs& strongs) NOEXCEPT
+inline tx_links CLASS::strong_only(const maybe_strongs& pairs) NOEXCEPT
 {
-    header_links blocks{};
-    for (const auto& strong: strongs)
-        if (strong.positive)
-            blocks.push_back(strong.header_fk);
+    tx_links links{};
+    for (const auto& pair: pairs)
+        if (pair.strong)
+            links.push_back(pair.tx);
 
-    return blocks;
+    // Reduced to the subset of strong duplicate (by hash) tx records.
+    return links;
 }
 
 // output to spenders (reverse navigation)
@@ -395,17 +398,36 @@ spend_links CLASS::to_spenders(const foreign_point& point) const NOEXCEPT
     if (!it)
         return {};
 
+    // Any terminal link in the set implies a store integrity failure.
+    static const spend_links fault{ spend_link{} };
+
     // Iterate transactions that spend the point, saving each spender.
     spend_links spenders{};
     do
     {
-        // BUGBUG: Deadlock due to holding iterator while querying own table.
-        // TODO: refactor to make safe and also pass boolean result code.
-        spenders.push_back(to_spender(to_spend_tx(it.self()), point));
+        table::spend::get_parent spender{};
+        if (!store_.spend.get(it, spender))
+            return fault;
+
+        auto found{ false };
+        for (const auto& spend_fk: to_tx_spends(spender.parent_fk))
+        {
+            table::spend::get_key spend{};
+            if (!store_.spend.get(it, spend_fk, spend))
+                return fault;
+
+            // Only one input of a given tx may spend an output.
+            if (spend.key == point)
+            {
+                spenders.push_back(spend_fk);
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) return fault;
     }
     while (it.advance());
-
-    // Any terminal link implies a store integrity failure.
     return spenders;
 }
 
@@ -444,25 +466,41 @@ spend_links CLASS::to_tx_spends(const tx_link& link) const NOEXCEPT
 
 // protected
 TEMPLATE
-spend_links CLASS::to_tx_spends(uint32_t& version,
-    const tx_link& link) const NOEXCEPT
+spend_set CLASS::to_spend_set(const tx_link& link) const NOEXCEPT
 {
-    // (4.71%) from block_confirmable.
-
-    // (2.53%)
     table::transaction::get_version_puts tx{};
     if (!store_.tx.get(link, tx))
         return {};
 
-    version = tx.version;
     table::puts::get_spends puts{};
-
-    // (2.1%)
     puts.spend_fks.resize(tx.ins_count);
     if (!store_.puts.get(tx.puts_fk, puts))
         return {};
 
-    return std::move(puts.spend_fks);
+    spend_set set{ link, tx.version, {} };
+    set.spends.reserve(tx.ins_count);
+    
+    // This is not concurrent because to_spend_sets is (by tx).
+    table::spend::get_prevout_sequence get{};
+
+    // This reduced a no-bypass 840k sync/confirmable/confirm run by 8.3%.
+    const auto ptr = store_.spend.get_memory();
+
+    for (const auto& spend_fk: puts.spend_fks)
+    {
+        if (!store_.spend.get(ptr, spend_fk, get))
+            return {};
+
+        // Translate query to public struct.
+#if defined(HAVE_CLANG)
+        // emplace_back aggregate initialization requires clang 16.
+        set.spends.push_back({ get.point_fk, get.point_index, get.sequence });
+#else
+        set.spends.emplace_back(get.point_fk, get.point_index, get.sequence);
+#endif
+    }
+
+    return set;
 }
 
 // block to txs/puts (forward navigation)
@@ -471,7 +509,7 @@ spend_links CLASS::to_tx_spends(uint32_t& version,
 TEMPLATE
 tx_links CLASS::to_transactions(const header_link& link) const NOEXCEPT
 {
-    table::txs::slab txs{};
+    table::txs::get_txs txs{};
     if (!store_.txs.find(link, txs))
         return {};
 
@@ -486,25 +524,6 @@ tx_link CLASS::to_coinbase(const header_link& link) const NOEXCEPT
         return {};
 
     return txs.coinbase_fk;
-}
-
-TEMPLATE
-spend_links CLASS::to_non_coinbase_spends(
-    const header_link& link) const NOEXCEPT
-{
-    const auto txs = to_transactions(link);
-    if (txs.size() <= one)
-        return {};
-
-    // Dynamic spends allocation is an unnecessary block_confirmable cost.
-    spend_links spends{};
-    for (auto tx = std::next(txs.begin()); tx != txs.end(); ++tx)
-    {
-        const auto tx_spends = to_tx_spends(*tx);
-        spends.insert(spends.end(), tx_spends.begin(), tx_spends.end());
-    }
-
-    return spends;
 }
 
 TEMPLATE
