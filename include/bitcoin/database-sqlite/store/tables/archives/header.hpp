@@ -20,182 +20,97 @@
 #ifndef LIBBITCOIN_DATABASE_TABLES_ARCHIVES_HEADER_HPP
 #define LIBBITCOIN_DATABASE_TABLES_ARCHIVES_HEADER_HPP
 
+#include "include/bitcoin/database-sqlite/store/table.hpp"
+#include "include/bitcoin/database-sqlite/store/schema.hpp"
+#include "include/bitcoin/database-sqlite/wrapper/statement.hpp"
+#include "include/bitcoin/database-sqlite/wrapper/db.hpp"
 #include <bitcoin/system.hpp>
-#include <bitcoin/database/define.hpp>
-#include <bitcoin/database/memory/memory.hpp>
-#include <bitcoin/database/primitives/primitives.hpp>
-#include <bitcoin/database/tables/context.hpp>
-#include <bitcoin/database/tables/schema.hpp>
-#include <bitcoin/database-sqlite/wrapper/db.hpp>          // for db::database
-#include <bitcoin/database-sqlite/wrapper/transaction.hpp> // for db::transaction
-#include <bitcoin/database-sqlite/wrapper/command.hpp>     // for db::command
-#include <bitcoin/database-sqlite/wrapper/db_query.hpp>    // for db::queries
-#include <bitcoin/database-sqlite/wrapper/statement.hpp>   // for db::statement
+
+namespace libbitcoin {
+namespace database {
+namespace table {
+    using hash_digest = libbitcoin::system::data_array<32UL>;
 
 
+    struct header : public table<schema::header> {
 
- 
-    // CREATE TABLE IF NOT EXISTS header (
-    //     pk INTEGER PRIMARY KEY,
-    //     sk_hash BLOB,
-    //     flags INTEGER,
-    //     height INTEGER,
-    //     mtp INTEGER,
-    //     header_fk INTEGER,
-    //     version INTEGER,
-    //     time INTEGER,
-    //     bits INTEGER,
-    //     nonce INTEGER,
-    //     merkle_root BLOB,
-    //     FOREIGN KEY (header_fk) REFERENCES header (pk)
-    // )
-
-    
-// /**
-//  * The `header` class represents the header table in the database.
-//  * It provides methods for creating, modifying, and querying the header table.
-//  */
-// class header
-// {
-// public:
-//     /**
-//      * Create the header table.
-//      * @param database The database object.
-//      * @param transaction The transaction object.
-//      * @return A status code indicating success or failure.
-//      */
-//     static int create(db::database& database, db::transaction& transaction);
-
-//     /**
-//      * Insert a row into the header table.
-//      * @param database The database object.
-//      * @param transaction The transaction object.
-//      * @param row The row to insert.
-//      * @return A status code indicating success or failure.
-//      */
-//     static int insert(db::database& database, db::transaction& transaction, const db::table::archives::row& row);
-
-//     /**
-//      * Update a row in the header table.
-//      * @param database The database object.
-//      * @param transaction The transaction object.
-//      * @param row The row to update.
-//      * @return A status code indicating success or failure.
-//      */
-//     static int update(db::database& database, db::transaction& transaction, const db::table::archives::row& row);
-
-//     /**
-//      * Delete a row from the header table.
-//      * @param database The database object.
-//      * @param transaction The transaction object.
-//      * @param hash The hash of the row to delete.
-//      * @return A status code indicating success or failure.
-//      */
-//     static int remove(db::database& database, db::transaction& transaction, const hash_digest& hash);
-
-//     /**
-//      * Find a row in the header table by hash.
-//      * @param
-
-namespace libbitcoin
-{
-    namespace database
-    {
-        namespace table
+        inline bool create_table(db::database& db)
         {
-            struct header
+            return db.exec(schema::header::create_table) == SQLITE_OK;
+        }
+
+        inline bool insert(db::database& db, const system::chain::header& header,uint32_t height, uint32_t flags,uint32_t mtp)
+        {
+            const char* sql = R"(
+                INSERT OR REPLACE INTO headers
+                (hash, version, previous_block_hash,merkle_root,timestamp,bits,nonce,height,flags,mtp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            )";
+            
+            db::statement stmt(db);
+            auto ec = stmt.prepare(sql);
+            if (!ec) return false;
+
+            stmt.bind(1, encode_hash(header.hash()));
+            stmt.bind(2, header.version());
+            stmt.bind(3, encode_hash(header.previous_block_hash()));
+            stmt.bind(4, encode_hash(header.merkle_root()));
+            stmt.bind(5, header.timestamp());
+            stmt.bind(6, header.bits());
+            stmt.bind(7, header.nonce());
+            stmt.bind(8, height);
+            stmt.bind(9, flags);
+            stmt.bind(10, mtp);
+
+            return stmt.finalize() == SQLITE_OK;
+        }
+
+        inline system::chain::header::cptr get_by_height(db::database& db, uint32_t height)
+        {
+            const char* sql = "SELECT * FROM headers WHERE hash = ?";
+            db::statement stmt(db);
+            auto ec = stmt.prepare(sql);
+
+            stmt.bind(1,height);
+
+            if (stmt.step() != SQLITE_ROW)
             {
-                struct record {
-                    inline bool from_data(reader& source) NOEXCEPT
-                    {
+                return nullptr;
+            }
+            return extract_header(stmt.get());
 
-                    }
-                    inline bool to_data(finalizer& sink) const NOEXCEPT {
+        }
+    private:
+        inline std::string encode_hash(const system::hash_digest& hash_digest)
+        {
+            return system::encode_base16(hash_digest);
+        }
 
-                    }
-                    inline bool operator==(const record& other) const NOEXCEPT {
+        inline system::hash_digest decode_hash(const std::string& str)
+        {
+            system::hash_digest hash;
+            system::decode_base16(hash,str);
+            return hash;
+        }
 
-                    }
-                    // members data types 
-                    // will be writing these in the type that will be stored in sql!
-                    // context ctx{};
-                    // bool milestone{};
-                    // link::integer parent_fk{};
-                    // uint32_t version{};
-                    // uint32_t timestamp{};
-                    // uint32_t bits{};
-                    // uint32_t nonce{};
-                    // hash_digest merkle_root{};
-                };
-                
+        inline system::chain::header::cptr extract_header(db::statement& stmt) {
+            auto header = std::shared_ptr<system::chain::header>();
 
-            };
-            // i think record put refernce would not be needed!
-            // at last since we have to return the data in the query
-            // so the query can be processed intermediately in the ipps!
-            // similarly record put refernce might also be not needed!
+            header->set_hash(decode_hash(reinterpret_cast<const char*>(sqlite3_column_text(stmt,0))));
+            header->version(sqlite3_column_int(stmt,1));
+            header->previous_block_hash(sqlite3_column_int(stmt,1));
+            header->merkle_root(decode_hash(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3))));
+            header->set_timestamp(sqlite3_column_int(stmt, 4));
+            header->set_bits(sqlite3_column_int(stmt, 5));
+            header->set_nonce(sqlite3_column_int(stmt, 6));
 
-            // returns timestamp!
-            struct get_version {
-                inline bool from_data(reader& source) NOEXCEPT {
+            return header;
 
-                }
-            };
-
-            // returns bits! ()
-            struct get_bits {
-                inline bool from_data(reader& source) NOEXCEPT {
-
-                }
-                unit32_t bits{}; // put bits!
-            };
-
-            // get parent fk returns the header fk which is the pk of block before
-            struct get_parent_fk {
-                inline bool from_data(reader& source) {
-
-                }
-                uint32_t parent_fk{};
-            };
-
-            struct get_flags {
-                inline bool from_data(reader& source) NOEXCEPT {
-                    return source;
-                }
-                short_int flag; // 2 bytes
-            };
-            
-            // returns the height!
-            struct get_height {
-                inline bool from_data(reader& source) NOEXCEPT {
-                    height = store_db::store.get_height(); // modify the height member of source
-                    return source; // return source;
-                }
-                uint32_t height{};
-            };
-
-            struct get_mtp {
-                inline bool from_data(reader& source) NOEXCEPT {
-                    return source;
-                }
-                uint32_t mtp{};
-            };
-
-            struct get_milestone {
-                inline bool from_data(reader& source) NOEXCEPT {
-                    return source;
-                }
-                bool milestone{};
-            };
-            
-
-            // get check context - a bit ambiguos about it's understanding!
-            // and also if context too needs an implementation!
-
-
-        };
+        }
     };
-}; // namespace
+}
+}
+}
 
 #endif
 

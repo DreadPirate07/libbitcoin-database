@@ -23,12 +23,19 @@ namespace db {
     class statement : noncopyable {
 
     public:
+
+        //statement(database& db) : db(db), stmt(nullptr){};
+        //prepares statement
+        explicit statement(database& db, char const *stmt = nullptr);
+
         int prepare(char const *stmt);
 
         int finalize();
 
         // binding methods
         int bind(int idx, int value);
+
+        int bind(int idx,uint32_t value);
 
         int bind(int idx, double value);
 
@@ -63,6 +70,8 @@ namespace db {
         int step();
 
         int reset();
+            
+        ~statement();
 
     protected:
         // db and statement objects.
@@ -70,14 +79,11 @@ namespace db {
         sqlite3_stmt *stmt;
         const char *tail;
 
-        //prepares statement
-        explicit statement(database& db, char const *stmt = nullptr);
-
         int prepare_impl(const char *stmt);
 
         int finalize_impl(sqlite3_stmt *stmt);
 
-        ~statement();
+
     };
 }
 #endif //LIBBITCOIN_DATABASE_STATEMENT_HPP
