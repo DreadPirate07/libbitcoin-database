@@ -29,7 +29,7 @@
 namespace libbitcoin {
 namespace database {
 namespace table {
-    using hash_digest = libbitcoin::system::data_array<32UL>;
+    // using hash_digest = libbitcoin::system::data_array<32UL>;
 
 
     struct header : public table<schema::header> {
@@ -95,7 +95,8 @@ namespace table {
 
         inline system::chain::header::cptr extract_header(db::statement& stmt) {
             auto header = std::shared_ptr<system::chain::header>();
-
+                // constructor needs to be called!
+                //
             header->set_hash(decode_hash(reinterpret_cast<const char*>(sqlite3_column_text(stmt,0))));
             header->version(sqlite3_column_int(stmt,1));
             header->previous_block_hash(sqlite3_column_int(stmt,1));
@@ -113,4 +114,3 @@ namespace table {
 }
 
 #endif
-
