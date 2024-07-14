@@ -15,7 +15,6 @@ namespace db {
     class query : public statement
     {
     public:
-
         class rows
         {
         public:

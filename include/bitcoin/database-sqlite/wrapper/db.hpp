@@ -17,7 +17,6 @@
 namespace db {
     class database : noncopyable {
         friend class statement;
-
         friend class db_error;
 
     public:

@@ -25,12 +25,12 @@
 #include "include/bitcoin/database-sqlite/wrapper/statement.hpp"
 #include "include/bitcoin/database-sqlite/wrapper/db.hpp"
 #include <bitcoin/system.hpp>
+#include "wrapper/sqlite3pp.h"
 
 namespace libbitcoin {
 namespace database {
 namespace table {
     // using hash_digest = libbitcoin::system::data_array<32UL>;
-
 
     struct header : public table<schema::header> {
 
@@ -51,10 +51,10 @@ namespace table {
             auto ec = stmt.prepare(sql);
             if (!ec) return false;
 
-            stmt.bind(1, encode_hash(header.hash()));
+            stmt.bind(1, encode_hash(header.hash()).c_str(),db::copy_semantic::nocopy);
             stmt.bind(2, header.version());
-            stmt.bind(3, encode_hash(header.previous_block_hash()));
-            stmt.bind(4, encode_hash(header.merkle_root()));
+            stmt.bind(3, encode_hash(header.previous_block_hash()).c_str(),db::copy_semantic::nocopy);
+            stmt.bind(4, encode_hash(header.merkle_root()).c_str(),db::copy_semantic::nocopy);
             stmt.bind(5, header.timestamp());
             stmt.bind(6, header.bits());
             stmt.bind(7, header.nonce());
@@ -77,7 +77,7 @@ namespace table {
             {
                 return nullptr;
             }
-            return extract_header(stmt.get());
+            return extract_header(db,stmt);
 
         }
     private:
@@ -93,17 +93,38 @@ namespace table {
             return hash;
         }
 
-        inline system::chain::header::cptr extract_header(db::statement& stmt) {
-            auto header = std::shared_ptr<system::chain::header>();
-                // constructor needs to be called!
-                //
-            header->set_hash(decode_hash(reinterpret_cast<const char*>(sqlite3_column_text(stmt,0))));
-            header->version(sqlite3_column_int(stmt,1));
-            header->previous_block_hash(sqlite3_column_int(stmt,1));
-            header->merkle_root(decode_hash(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3))));
-            header->set_timestamp(sqlite3_column_int(stmt, 4));
-            header->set_bits(sqlite3_column_int(stmt, 5));
-            header->set_nonce(sqlite3_column_int(stmt, 6));
+        // We're trying to create a function that can be used to extract header data from a SQLite database
+        // and create a system::chain::header object, which is part of the libbitcoin system.
+        inline system::chain::header::cptr extract_header(db::database& db,db::statement& stmt) {
+            const char* sql = "SELECT * FROM headers WHERE has = ?";
+            db::query query(db,sql);
+
+            if (query.step() != SQLITE_ROW)
+            {
+                return nullptr;
+            }
+
+
+            db::query::rows rows(stmt);
+            
+            const auto version = static_cast<uint32_t>(rows.get<uint32_t>(1));
+            const auto previous_block_hash = decode_hash(reinterpret_cast<const char*>(rows.get<const char*>(2)));
+            const auto merkle_root = decode_hash(reinterpret_cast<const char*>(rows.get<const char*>(2)));
+            const auto timestamp = static_cast<uint32_t>(rows.get<uint32_t>(3));
+            const auto bits = static_cast<uint32_t>(rows.get<uint32_t>(4));
+            const auto nonce = static_cast<uint32_t>(rows.get<uint32_t>(5));
+
+            auto header = std::make_shared<system::chain::header>(
+                version,
+                previous_block_hash,
+                merkle_root,
+                timestamp,
+                bits,
+                nonce
+            );
+
+            // Set the hash separately as it's not part of the constructor
+            header->set_hash(decode_hash(reinterpret_cast<const char*>(stmt.column_text(0))));
 
             return header;
 
