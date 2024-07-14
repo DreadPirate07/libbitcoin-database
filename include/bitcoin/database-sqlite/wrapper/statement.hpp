@@ -70,6 +70,10 @@ namespace db {
         int step();
 
         int reset();
+
+        int column_uint32(int idx) const;
+
+        const char* column_text(int idx) const;
             
         ~statement();
 

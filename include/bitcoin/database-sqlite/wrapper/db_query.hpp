@@ -53,7 +53,6 @@ namespace db {
         }
 
         getstream getter(int idx = 0);
-
         private:
         int get(int idx, int) const;
         double get(int idx, double) const;

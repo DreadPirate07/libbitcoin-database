@@ -77,7 +77,7 @@ namespace table {
             {
                 return nullptr;
             }
-            return extract_header(db,stmt);
+            return extract_header(stmt);
 
         }
     private:
@@ -95,24 +95,21 @@ namespace table {
 
         // We're trying to create a function that can be used to extract header data from a SQLite database
         // and create a system::chain::header object, which is part of the libbitcoin system.
-        inline system::chain::header::cptr extract_header(db::database& db,db::statement& stmt) {
+        inline system::chain::header::cptr extract_header(db::statement& stmt) {
             const char* sql = "SELECT * FROM headers WHERE has = ?";
-            db::query query(db,sql);
 
-            if (query.step() != SQLITE_ROW)
+            if (stmt.step() != SQLITE_ROW)
             {
                 return nullptr;
             }
 
 
-            db::query::rows rows(stmt);
-            
-            const auto version = static_cast<uint32_t>(rows.get<uint32_t>(1));
-            const auto previous_block_hash = decode_hash(reinterpret_cast<const char*>(rows.get<const char*>(2)));
-            const auto merkle_root = decode_hash(reinterpret_cast<const char*>(rows.get<const char*>(2)));
-            const auto timestamp = static_cast<uint32_t>(rows.get<uint32_t>(3));
-            const auto bits = static_cast<uint32_t>(rows.get<uint32_t>(4));
-            const auto nonce = static_cast<uint32_t>(rows.get<uint32_t>(5));
+            const auto version = static_cast<uint32_t>(stmt.column_uint32(1));
+            const auto previous_block_hash = decode_hash(stmt.column_text(2));
+            const auto merkle_root = decode_hash(stmt.column_text(3));
+            const auto timestamp = static_cast<uint32_t>(stmt.column_uint32(4));
+            const auto bits = static_cast<uint32_t>(stmt.column_uint32(5));
+            const auto nonce = static_cast<uint32_t>(stmt.column_uint32(5));
 
             auto header = std::make_shared<system::chain::header>(
                 version,
@@ -124,7 +121,7 @@ namespace table {
             );
 
             // Set the hash separately as it's not part of the constructor
-            header->set_hash(decode_hash(reinterpret_cast<const char*>(stmt.column_text(0))));
+            header->set_hash(decode_hash(stmt.column_text(0)));
 
             return header;
 

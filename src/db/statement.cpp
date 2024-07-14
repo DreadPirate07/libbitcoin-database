@@ -148,4 +148,14 @@ namespace db {
     {
         return bind(name);
     }
+
+    int statement::column_uint32(int idx) const
+    {
+        return sqlite3_column_int(stmt, idx);
+    }
+
+    const char* statement::column_text(int idx) const
+    {
+        return reinterpret_cast<const char*>(sqlite3_column_text(stmt, idx));
+    }
 }
