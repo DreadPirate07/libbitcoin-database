@@ -25,21 +25,21 @@
 #include "include/bitcoin/database-sqlite/wrapper/statement.hpp"
 #include "include/bitcoin/database-sqlite/wrapper/db.hpp"
 #include <bitcoin/system.hpp>
-#include "wrapper/sqlite3pp.h"
+// #include "wrapper/sqlite3pp.h"
 
 namespace libbitcoin {
 namespace database {
 namespace table {
     // using hash_digest = libbitcoin::system::data_array<32UL>;
 
-    struct header : public table<schema::header> {
+    struct header : public sqlite::table<schema::header> {
 
-        inline bool create_table(db::database& db)
+        inline bool create_table(sqlite::db::database& db)
         {
             return db.exec(schema::header::create_table) == SQLITE_OK;
         }
 
-        inline bool insert(db::database& db, const system::chain::header& header,uint32_t height, uint32_t flags,uint32_t mtp)
+        inline bool insert(sqlite::db::database& db, const system::chain::header& header,uint32_t height, uint32_t flags,uint32_t mtp)
         {
             const char* sql = R"(
                 INSERT OR REPLACE INTO headers
@@ -47,7 +47,7 @@ namespace table {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             )";
             
-            db::statement stmt(db);
+            sqlite::db::statement stmt(db);
             auto ec = stmt.prepare(sql);
             if (!ec) return false;
 
@@ -65,10 +65,10 @@ namespace table {
             return stmt.finalize() == SQLITE_OK;
         }
 
-        inline system::chain::header::cptr get_by_height(db::database& db, uint32_t height)
+        inline system::chain::header::cptr get_by_height(sqlite::db::database& db, uint32_t height)
         {
             const char* sql = "SELECT * FROM headers WHERE hash = ?";
-            db::statement stmt(db);
+            sqlite::db::statement stmt(db);
             auto ec = stmt.prepare(sql);
 
             stmt.bind(1,height);
@@ -95,8 +95,8 @@ namespace table {
 
         // We're trying to create a function that can be used to extract header data from a SQLite database
         // and create a system::chain::header object, which is part of the libbitcoin system.
-        inline system::chain::header::cptr extract_header(db::statement& stmt) {
-            const char* sql = "SELECT * FROM headers WHERE has = ?";
+        inline system::chain::header::cptr extract_header(sqlite::db::statement& stmt) {
+            const char* sql = "SELECT * FROM headers WHERE hash = ?";
 
             if (stmt.step() != SQLITE_ROW)
             {

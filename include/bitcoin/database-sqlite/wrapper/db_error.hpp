@@ -7,7 +7,9 @@
 
 #include "db.hpp"
 #include <stdexcept>
-
+namespace libbitcoin {
+namespace database {
+namespace sqlite {
 namespace db {
     class db_error : public std::runtime_error
     {
@@ -16,5 +18,7 @@ namespace db {
         explicit db_error(database& db);
     };
 }
-
+}
+}
+}
 #endif //LIBBITCOIN_DATABASE_ERROR_HPP

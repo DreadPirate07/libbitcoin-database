@@ -17,7 +17,9 @@
 // write the classes and templates!
 
 // implementation of bindings shall be written in src directory!
-
+namespace libbitcoin {
+namespace database {
+namespace sqlite {
 namespace db {
     // noncopyable class-template ensures that the object are non-copyable.
     // Object are allowed to be moved (move semantics).
@@ -39,5 +41,7 @@ namespace db {
     };
 
 }
-
+}
+}
+}
 #endif //LIBBITCOIN_DATABASE_SQLITE3_HPP

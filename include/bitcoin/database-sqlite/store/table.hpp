@@ -10,8 +10,8 @@
 
 
 namespace libbitcoin {
-    namespace database {
-        
+namespace database {
+namespace sqlite {
         template <typename Record>
         class table {
             public:
@@ -53,17 +53,17 @@ namespace libbitcoin {
                 // use auto while instantiating this type!
                 // not sure if this would work. will have to test it!
 
-                std::optional<Record> get(const typename Record::key_type& key) {
-                    db::query query(db_,get_select_sql().c_str());
-                    bind_key(query,key);
-                    db::query::query_iterator query_iterator(query);
+                // std::optional<Record> get(const typename Record::key_type& key) {
+                //     db::query query(db_,get_select_sql().c_str());
+                //     bind_key(query,key);
+                //     db::query::query_iterator query_iterator(query);
 
-                    while (query_iterator != SQLITE_ROW) {
-                        query_iterator++;
-                    }
-                    return query_iterator;
+                //     while (query_iterator != SQLITE_ROW) {
+                //         query_iterator++;
+                //     }
+                //     return query_iterator;
                     
-                }
+                // }
 
             protected:
                 db::database& db_;
@@ -82,7 +82,8 @@ namespace libbitcoin {
                 virtual void bind_key(db::query& query, const typename Record::key_type& key) const = 0;
                 virtual Record extract_record(db::query& query) const = 0;
         };
-    }
+}
+}
 }
 
 #endif

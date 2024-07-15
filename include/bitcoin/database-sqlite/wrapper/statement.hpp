@@ -14,6 +14,9 @@
 #include "noncopyable.hpp"
 #include "db.hpp"
 
+namespace libbitcoin {
+namespace database {
+namespace sqlite {
 namespace db {
 
     enum copy_semantic { copy, nocopy };
@@ -35,7 +38,7 @@ namespace db {
         // binding methods
         int bind(int idx, int value);
 
-        int bind(int idx,uint32_t value);
+        int bind(int idx,uint value);
 
         int bind(int idx, double value);
 
@@ -86,8 +89,9 @@ namespace db {
         int prepare_impl(const char *stmt);
 
         int finalize_impl(sqlite3_stmt *stmt);
-
-
     };
+}
+}
+}
 }
 #endif //LIBBITCOIN_DATABASE_STATEMENT_HPP

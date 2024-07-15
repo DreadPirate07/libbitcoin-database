@@ -49,8 +49,11 @@
  * constructor and updated by the `<<` operator.
  **/
 
-
+namespace libbitcoin {
+namespace database {
+namespace sqlite {
 namespace db{
+    
     class command : public statement
     {
     public:
@@ -97,6 +100,9 @@ namespace db{
     int execute();
     int execute_all();
   };
+}
+}
+}
 }
 
 

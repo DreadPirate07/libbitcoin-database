@@ -3,7 +3,9 @@
 #define LIBBITCOIN_DATABASE_TRANSACTION_HPP
 
 #include "db.hpp"
-
+namespace libbitcoin {
+namespace database {
+namespace sqlite {
 namespace db {
     class transaction : noncopyable
     {
@@ -18,5 +20,8 @@ namespace db {
         database* db_;
         bool fcommit_;
     };
+}
+}
+}
 }
 #endif

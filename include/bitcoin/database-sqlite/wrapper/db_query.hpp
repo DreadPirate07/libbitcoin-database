@@ -5,6 +5,9 @@
 #include "db.hpp"
 #include "statement.hpp"
 
+namespace libbitcoin {
+namespace database {
+namespace sqlite {
 namespace db {
 
     template <class T>
@@ -98,6 +101,9 @@ namespace db {
         iterator end();
     };
 
+}
+}
+}
 }
 
 #endif

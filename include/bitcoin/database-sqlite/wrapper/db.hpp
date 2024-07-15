@@ -13,7 +13,9 @@
 #include <tuple>
 
 #include "noncopyable.hpp"
-
+namespace libbitcoin {
+namespace database {
+namespace sqlite {
 namespace db {
     class database : noncopyable {
         friend class statement;
@@ -108,6 +110,9 @@ namespace db {
         authorize_handler ah_;
 
     };
+}
+}
+}
 }
 
 #endif //LIBBITCOIN_DATABASE_DATABASE_HPP
