@@ -20,30 +20,38 @@
 #ifndef LIBBITCOIN_DATABASE_TABLES_ARCHIVES_HEADER_HPP
 #define LIBBITCOIN_DATABASE_TABLES_ARCHIVES_HEADER_HPP
 
-#include "include/bitcoin/database-sqlite/store/table.hpp"
+// #include "include/bitcoin/database-sqlite/store/table.hpp"
 #include "include/bitcoin/database-sqlite/store/schema.hpp"
 #include "include/bitcoin/database-sqlite/wrapper/statement.hpp"
 #include "include/bitcoin/database-sqlite/wrapper/db.hpp"
+#include <bitcoin/database/tables/schema.hpp>
 #include <bitcoin/system.hpp>
 // #include "wrapper/sqlite3pp.h"
+
+
+using database_ = libbitcoin::database::sqlite::db;
+using schema_ = libbitcoin::database::schema;
+
 
 namespace libbitcoin {
 namespace database {
 namespace table {
     // using hash_digest = libbitcoin::system::data_array<32UL>;
 
-    struct header : public sqlite::table<schema::header> {
-
-        inline bool create_table(sqlite::db::database& db)
+    struct header {
+        
+        header(database_ db_): db(db_) {};
+        
+        inline bool create_table()
         {
-            return db.exec(schema::header::create_table) == SQLITE_OK;
+            return db.exec(schema_::header::create_table) == SQLITE_OK;
         }
 
-        inline bool insert(sqlite::db::database& db, const system::chain::header& header,uint32_t height, uint32_t flags,uint32_t mtp)
+        inline bool insert( const system::chain::header& header,uint32_t height, uint32_t flags,uint32_t mtp)
         {
             const char* sql = R"(
                 INSERT OR REPLACE INTO headers
-                (hash, version, previous_block_hash,merkle_root,timestamp,bits,nonce,height,flags,mtp)
+                (hash,version, previous_block_hash,merkle_root,timestamp,bits,nonce,height,flags,mtp)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             )";
             
@@ -51,10 +59,10 @@ namespace table {
             auto ec = stmt.prepare(sql);
             if (!ec) return false;
 
-            stmt.bind(1, encode_hash(header.hash()).c_str(),db::copy_semantic::nocopy);
+            stmt.bind(1, encode_hash(header.hash()).c_str(),sqlite::db::copy_semantic::nocopy);
             stmt.bind(2, header.version());
-            stmt.bind(3, encode_hash(header.previous_block_hash()).c_str(),db::copy_semantic::nocopy);
-            stmt.bind(4, encode_hash(header.merkle_root()).c_str(),db::copy_semantic::nocopy);
+            stmt.bind(3, encode_hash(header.previous_block_hash()).c_str(),sqlite::db::copy_semantic::nocopy);
+            stmt.bind(4, encode_hash(header.merkle_root()).c_str(),sqlite::db::copy_semantic::nocopy);
             stmt.bind(5, header.timestamp());
             stmt.bind(6, header.bits());
             stmt.bind(7, header.nonce());
@@ -65,7 +73,7 @@ namespace table {
             return stmt.finalize() == SQLITE_OK;
         }
 
-        inline system::chain::header::cptr get_by_height(sqlite::db::database& db, uint32_t height)
+        inline system::chain::header::cptr get_by_height(uint32_t height)
         {
             const char* sql = "SELECT * FROM headers WHERE hash = ?";
             sqlite::db::statement stmt(db);
@@ -126,6 +134,8 @@ namespace table {
             return header;
 
         }
+
+        sqlite::db::database& db{};
     };
 }
 }
