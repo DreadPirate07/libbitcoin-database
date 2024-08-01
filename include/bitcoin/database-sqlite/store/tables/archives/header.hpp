@@ -20,31 +20,27 @@
 #ifndef LIBBITCOIN_DATABASE_TABLES_ARCHIVES_HEADER_HPP
 #define LIBBITCOIN_DATABASE_TABLES_ARCHIVES_HEADER_HPP
 
-// #include "include/bitcoin/database-sqlite/store/table.hpp"
 #include "include/bitcoin/database-sqlite/store/schema.hpp"
 #include "include/bitcoin/database-sqlite/wrapper/statement.hpp"
 #include "include/bitcoin/database-sqlite/wrapper/db.hpp"
 #include <bitcoin/database/tables/schema.hpp>
 #include <bitcoin/system.hpp>
-// #include "wrapper/sqlite3pp.h"
 
 
-using database_ = libbitcoin::database::sqlite::db;
-using schema_ = libbitcoin::database::schema;
-
+using database_ = libbitcoin::sqlite::database::db::database;
 
 namespace libbitcoin {
+namespace sqlite {
 namespace database {
 namespace table {
-    // using hash_digest = libbitcoin::system::data_array<32UL>;
 
     struct header {
+        header(db::database& db_): db(db_) {}
         
-        header(database_ db_): db(db_) {};
-        
+        // header(database_ ) : db(db_) {}
         inline bool create_table()
         {
-            return db.exec(schema_::header::create_table) == SQLITE_OK;
+            return db.exec(schema::header::create_table) == SQLITE_OK;
         }
 
         inline bool insert( const system::chain::header& header,uint32_t height, uint32_t flags,uint32_t mtp)
@@ -55,14 +51,14 @@ namespace table {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             )";
             
-            sqlite::db::statement stmt(db);
+            db::statement stmt(db);
             auto ec = stmt.prepare(sql);
             if (!ec) return false;
 
-            stmt.bind(1, encode_hash(header.hash()).c_str(),sqlite::db::copy_semantic::nocopy);
+            stmt.bind(1, encode_hash(header.hash()).c_str(),db::copy_semantic::nocopy);
             stmt.bind(2, header.version());
-            stmt.bind(3, encode_hash(header.previous_block_hash()).c_str(),sqlite::db::copy_semantic::nocopy);
-            stmt.bind(4, encode_hash(header.merkle_root()).c_str(),sqlite::db::copy_semantic::nocopy);
+            stmt.bind(3, encode_hash(header.previous_block_hash()).c_str(),db::copy_semantic::nocopy);
+            stmt.bind(4, encode_hash(header.merkle_root()).c_str(),db::copy_semantic::nocopy);
             stmt.bind(5, header.timestamp());
             stmt.bind(6, header.bits());
             stmt.bind(7, header.nonce());
@@ -76,8 +72,10 @@ namespace table {
         inline system::chain::header::cptr get_by_height(uint32_t height)
         {
             const char* sql = "SELECT * FROM headers WHERE hash = ?";
-            sqlite::db::statement stmt(db);
+            
+            db::statement stmt(db);
             auto ec = stmt.prepare(sql);
+            if (!ec) return nullptr;
 
             stmt.bind(1,height);
 
@@ -103,7 +101,7 @@ namespace table {
 
         // We're trying to create a function that can be used to extract header data from a SQLite database
         // and create a system::chain::header object, which is part of the libbitcoin system.
-        inline system::chain::header::cptr extract_header(sqlite::db::statement& stmt) {
+        inline system::chain::header::cptr extract_header(db::statement& stmt) {
             const char* sql = "SELECT * FROM headers WHERE hash = ?";
 
             if (stmt.step() != SQLITE_ROW)
@@ -135,8 +133,9 @@ namespace table {
 
         }
 
-        sqlite::db::database& db{};
+        database_& db;
     };
+}
 }
 }
 }

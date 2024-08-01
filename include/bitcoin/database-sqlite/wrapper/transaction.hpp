@@ -4,8 +4,8 @@
 
 #include "db.hpp"
 namespace libbitcoin {
-namespace database {
 namespace sqlite {
+namespace database {
 namespace db {
     class transaction : noncopyable
     {

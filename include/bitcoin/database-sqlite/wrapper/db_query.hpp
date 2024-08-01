@@ -6,8 +6,8 @@
 #include "statement.hpp"
 
 namespace libbitcoin {
-namespace database {
 namespace sqlite {
+namespace database {
 namespace db {
 
     template <class T>

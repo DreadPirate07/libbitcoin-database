@@ -11,11 +11,11 @@
 #include <stdexcept>
 #include <string>
 #include <tuple>
-
 #include "noncopyable.hpp"
+
 namespace libbitcoin {
-namespace database {
 namespace sqlite {
+namespace database {
 namespace db {
     class database : noncopyable {
         friend class statement;

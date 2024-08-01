@@ -50,10 +50,10 @@
  **/
 
 namespace libbitcoin {
-namespace database {
 namespace sqlite {
+namespace database {
 namespace db{
-    
+
     class command : public statement
     {
     public:
@@ -66,7 +66,7 @@ namespace db{
         bindstream& operator << (T value) {
             auto rc = cmd_.bind(idx_, value);
             if (rc != SQLITE_OK) {
-            throw db_error(cmd_.db_);
+            throw db_error(cmd_.db);
             }
             ++idx_;
             return *this;

@@ -15,8 +15,8 @@
 #include "db.hpp"
 
 namespace libbitcoin {
-namespace database {
 namespace sqlite {
+namespace database {
 namespace db {
 
     enum copy_semantic { copy, nocopy };

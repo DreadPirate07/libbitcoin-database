@@ -1,15 +1,13 @@
-
-
-
 #ifndef LIBBITCOIN_DATABASE_ERROR_HPP
 #define LIBBITCOIN_DATABASE_ERROR_HPP
 
 
 #include "db.hpp"
 #include <stdexcept>
+
 namespace libbitcoin {
-namespace database {
 namespace sqlite {
+namespace database {
 namespace db {
     class db_error : public std::runtime_error
     {

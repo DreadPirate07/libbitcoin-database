@@ -8,6 +8,7 @@
 
 namespace libbitcoin
 {
+    namespace sqlite {
     namespace database
     {
         // might be of use!
@@ -138,6 +139,7 @@ namespace libbitcoin
             };
         };
     };
+}
 }
 
 #endif

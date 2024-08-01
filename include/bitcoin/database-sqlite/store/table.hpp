@@ -23,6 +23,7 @@
 #define LIBBITCOIN_DATABASE_TABLES_TABLE_HPP
 
 namespace libbitcoin {
+namespace sqlite {
 namespace database {
 
 enum class table_t
@@ -52,7 +53,7 @@ enum class table_t
     address_table,
     neutrino_table,
 };
-
+}
 } // namespace database
 } // namespace libbitcoin
 
