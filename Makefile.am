@@ -5,6 +5,9 @@
 #
 ###############################################################################
 
+
+# src_libbitcoin_database_la_LIBADD = ${bitcoin_system_LIBS} -lsqlite3
+
 # Automake settings.
 #==============================================================================
 # Look for macros in the m4 subdirectory.
@@ -33,7 +36,7 @@ doc_DATA = \
 #------------------------------------------------------------------------------
 lib_LTLIBRARIES = src/libbitcoin-database.la
 src_libbitcoin_database_la_CPPFLAGS = -I${srcdir}/include ${bitcoin_system_BUILD_CPPFLAGS}
-src_libbitcoin_database_la_LIBADD = ${bitcoin_system_LIBS}
+src_libbitcoin_database_la_LIBADD = ${bitcoin_system_LIBS} -lsqlite3
 src_libbitcoin_database_la_SOURCES = \
     src/error.cpp \
     src/settings.cpp \
@@ -45,7 +48,18 @@ src_libbitcoin_database_la_SOURCES = \
     src/memory/map.cpp \
     src/memory/utilities.cpp \
     src/memory/mman-win32/mman.cpp \
-    src/memory/mman-win32/mman.hpp
+    src/memory/mman-win32/mman.hpp \
+    src/db/command.cpp \
+    src/db/db_error.cpp \
+    src/db/db_query.cpp \
+    src/db/sqlite_db.cpp \
+    src/db/statement.cpp \
+    src/db/transaction.cpp
+
+
+
+
+
 
 # local: test/libbitcoin-database-test
 #------------------------------------------------------------------------------
@@ -245,6 +259,32 @@ include_bitcoin_database_tables_optionals_HEADERS = \
     include/bitcoin/database/tables/optionals/bootstrap.hpp \
     include/bitcoin/database/tables/optionals/buffer.hpp \
     include/bitcoin/database/tables/optionals/neutrino.hpp
+
+
+
+
+
+include_bitcoin_database_sqlitedir = ${includedir}/bitcoin/database-sqlite
+include_bitcoin_database_sqlite_HEADERS = \
+    include/bitcoin/database-sqlite/impl/query/archive.ipp \
+    include/bitcoin/database-sqlite/impl/store.ipp \
+    include/bitcoin/database-sqlite/query/query.hpp \
+    include/bitcoin/database-sqlite/store/schema.hpp \
+    include/bitcoin/database-sqlite/store/store.hpp \
+    include/bitcoin/database-sqlite/store/table.hpp \
+    include/bitcoin/database-sqlite/store/tables/archives/header.hpp \
+    include/bitcoin/database-sqlite/store/tables/archives/input.hpp \
+    include/bitcoin/database-sqlite/store/tables/archives/output.hpp \
+    include/bitcoin/database-sqlite/store/tables/archives/points.hpp \
+    include/bitcoin/database-sqlite/store/tables/archives/puts.hpp \
+    include/bitcoin/database-sqlite/wrapper/command.hpp \
+    include/bitcoin/database-sqlite/wrapper/db_error.hpp \
+    include/bitcoin/database-sqlite/wrapper/db.hpp \
+    include/bitcoin/database-sqlite/wrapper/db_query.hpp \
+    include/bitcoin/database-sqlite/wrapper/noncopyable.hpp \
+    include/bitcoin/database-sqlite/wrapper/statement.hpp \
+    include/bitcoin/database-sqlite/wrapper/transaction.hpp
+
 
 
 # Custom make targets.

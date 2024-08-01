@@ -4,7 +4,11 @@
 #include <memory>
 
 
-namespace db {
+
+namespace libbitcoin {
+namespace sqlite {
+namespace database {
+namespace db{
     statement::statement(database& db, char const* stmt) : db(db), stmt(0), tail(0)
     {
         if (stmt) {
@@ -158,4 +162,7 @@ namespace db {
     {
         return reinterpret_cast<const char*>(sqlite3_column_text(stmt, idx));
     }
+}
+}
+}
 }

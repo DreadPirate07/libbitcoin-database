@@ -2,8 +2,11 @@
 #include "bitcoin/database-sqlite/wrapper/db.hpp"
 #include "bitcoin/database-sqlite/wrapper/db_error.hpp"
 
-namespace db {
-    
+
+namespace libbitcoin {
+namespace sqlite {
+namespace database {
+namespace db{    
     transaction::transaction(database& db, bool fcommit, bool freserve) : db_(&db), fcommit_(fcommit)
     {
         int rc = db_->exec(freserve ? "BEGIN IMMEDIATE" : "BEGIN");
@@ -37,4 +40,6 @@ namespace db {
         return rc;
     }
 }
-
+}
+}
+}

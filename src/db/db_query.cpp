@@ -2,7 +2,11 @@
 #include "bitcoin/database-sqlite/wrapper/db_error.hpp"
 
 
-namespace db {
+
+namespace libbitcoin {
+namespace sqlite {
+namespace database {
+namespace db{
     query::rows::getstream::getstream(rows* rws, int idx) : rws_(rws), idx_(idx){}
 
     query::rows::rows(sqlite3_stmt* stmt) : stmt_(stmt) {}
@@ -99,4 +103,7 @@ namespace db {
     query::query(database& db, char const* stmt) : statement(db, stmt)
     {
     }
+}
+}
+}
 }

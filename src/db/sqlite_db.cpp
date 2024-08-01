@@ -8,8 +8,12 @@
 #include <cstring>
 #include <memory>
 
-namespace db
-{
+
+namespace libbitcoin {
+namespace sqlite {
+namespace database {
+namespace db{
+
     database::database(const char *dbname, int flags, const char *vfs)
     {
         if (dbname)
@@ -184,36 +188,39 @@ namespace db
     {
         return sqlite3_busy_timeout(db_, ms);
     }
+// handler implementations shall be done later on!
 
-    void database::set_busy_handler(busy_handler h)
-    {
-        bh_ = h;
-        sqlite3_busy_handler(db_, bh_ ? busy_handler_impl : 0, &bh_);
-    }
 
-    void database::set_commit_handler(commit_handler h)
-    {
-        ch_ = h;
-        sqlite3_commit_hook(db_, ch_ ? commit_hook_impl : 0, &ch_);
-    }
 
-    void database::set_rollback_handler(rollback_handler h)
-    {
-        rh_ = h;
-        sqlite3_rollback_hook(db_, rh_ ? rollback_hook_impl : 0, &rh_);
-    }
+    // void database::set_busy_handler(busy_handler h)
+    // {
+    //     bh_ = h;
+    //     sqlite3_busy_handler(db_, bh_ ? busy_handler_impl : 0, &bh_);
+    // }
 
-    void database::set_update_handler(update_handler h)
-    {
-        uh_ = h;
-        sqlite3_update_hook(db_, uh_ ? update_hook_impl : 0, &uh_);
-    }
+    // void database::set_commit_handler(commit_handler h)
+    // {
+    //     ch_ = h;
+    //     sqlite3_commit_hook(db_, ch_ ? commit_hook_impl : 0, &ch_);
+    // }
 
-    void database::set_authorize_handler(authorize_handler h)
-    {
-        ah_ = h;
-        sqlite3_set_authorizer(db_, ah_ ? authorizer_impl : 0, &ah_);
-    }
+    // void database::set_rollback_handler(rollback_handler h)
+    // {
+    //     rh_ = h;
+    //     sqlite3_rollback_hook(db_, rh_ ? rollback_hook_impl : 0, &rh_);
+    // }
+
+    // void database::set_update_handler(update_handler h)
+    // {
+    //     uh_ = h;
+    //     sqlite3_update_hook(db_, uh_ ? update_hook_impl : 0, &uh_);
+    // }
+
+    // void database::set_authorize_handler(authorize_handler h)
+    // {
+    //     ah_ = h;
+    //     sqlite3_set_authorizer(db_, ah_ ? authorizer_impl : 0, &ah_);
+    // }
 
 
     // implementation for handlers!
@@ -251,4 +258,7 @@ namespace db
 
     }
 
+}
+}
+}
 }
